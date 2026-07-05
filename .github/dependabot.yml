@@ -1,0 +1,41 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly" 
+      day: "sunday"
+      time: "09:00"
+      timezone: "Asia/Jakarta"
+    open-pull-requests-limit: 10
+    versioning-strategy: increase 
+
+    groups:
+      nestjs:
+        patterns:
+          - "@nestjs/*"
+      prisma:
+        patterns:
+          - "@prisma/*"
+          - "prisma"
+      dev-dependencies:
+        dependency-type: "development"
+        exclude-patterns:
+          - "@nestjs/*"
+          - "@prisma/*"
+          - "prisma"
+      production-dependencies:
+        dependency-type: "production"
+        exclude-patterns:
+          - "@nestjs/*"
+          - "@prisma/*"
+          - "prisma"
+
+    labels:
+      - "dependencies"
+      - "npm"
+
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore-dev"
+      include: "scope"
