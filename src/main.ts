@@ -9,7 +9,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
   });
-  const configService = new ConfigService();
+  const configService = app.get(ConfigService);
 
   app.useLogger(app.get(Logger));
   app.useGlobalFilters(new HttpErrorFilter());
