@@ -7,6 +7,8 @@ import { pinoConfigAsync } from './core/config/logger.config';
 import { ConfigModule } from '@nestjs/config';
 import { envConfig } from './core/config/env.config';
 import { HealthModule } from './modules/health/health.module';
+import { APP_PIPE } from '@nestjs/core';
+import { ZodValidationPipe } from 'nestjs-zod';
 
 @Module({
   imports: [
@@ -16,6 +18,12 @@ import { HealthModule } from './modules/health/health.module';
     HealthModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_PIPE,
+      useClass: ZodValidationPipe,
+    },
+  ],
 })
 export class AppModule {}
