@@ -6,13 +6,13 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 import { STATUS_CODES } from 'http';
 import { ZodValidationException } from 'nestjs-zod';
 import { ZodError } from 'zod';
 import { FieldError } from './field-error';
-import { prismaErrorMapper } from './prisma-error.mapper';
-import { ConfigService } from '@nestjs/config';
+import { MappedError, prismaErrorMapper } from './prisma-error.mapper';
 
 @Catch()
 export class HttpErrorFilter implements ExceptionFilter {
@@ -28,56 +28,82 @@ export class HttpErrorFilter implements ExceptionFilter {
     const req = ctx.getRequest<Request>();
     const res = ctx.getResponse<Response>();
 
-    const mapped = prismaErrorMapper(exception);
+    const { statusCode, message, errors } = this.parseException(exception);
 
-    const status = 'error';
-    const statusCode =
-      mapped?.statusCode ??
-      (exception instanceof HttpException
-        ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR);
-    const type = STATUS_CODES[statusCode] || 'Internal Server Error';
     const exceptionName =
       exception instanceof Error ? exception.constructor.name : 'UnknownError';
     const endpoint = `${req.method} ${req.url}`;
-    const timestamp = new Date().toISOString();
-    const errors =
-      exception instanceof HttpException
-        ? exception.getResponse()
-        : 'An internal error occurred on the server';
-    const message =
-      typeof errors === 'object' && errors !== null
-        ? ((errors as Record<string, unknown>)['message'] ??
-          JSON.stringify(errors))
-        : String(errors);
-    const track = exception instanceof Error ? exception.stack : '';
-    const messageStr =
-      mapped?.message ??
-      (typeof message === 'string' ? message : JSON.stringify(message));
-    const fieldErrors =
-      this.extractValidationErrors(exception) ?? mapped?.errors;
 
-    const logMessage = `[${endpoint}] - ${statusCode} : ${messageStr}`;
-    if (statusCode >= 500) this.logger.error(logMessage, track);
-    else this.logger.warn(logMessage);
+    const logMessage = `[${endpoint}] - ${statusCode} : ${message}`;
+    if (statusCode >= 500) {
+      const stack = exception instanceof Error ? exception.stack : '';
+      this.logger.error(logMessage, stack);
+    } else {
+      this.logger.warn(logMessage);
+    }
 
     res.status(statusCode).json({
-      status,
+      status: 'error',
       statusCode,
-      type,
+      type: STATUS_CODES[statusCode] ?? 'Internal Server Error',
       exceptionName: this.isDev ? exceptionName : undefined,
-      timestamp,
+      timestamp: new Date().toISOString(),
       endpoint,
-      message: messageStr,
-      errors: fieldErrors,
+      message,
+      errors,
     });
   }
 
-  private extractValidationErrors(
-    exception: unknown,
-  ): FieldError[] | undefined {
-    if (!(exception instanceof ZodValidationException)) return undefined;
+  private parseException(exception: unknown): MappedError {
+    const mapped = prismaErrorMapper(exception);
+    if (mapped) return mapped;
 
+    if (exception instanceof ZodValidationException) {
+      return {
+        statusCode: HttpStatus.BAD_REQUEST,
+        message: 'Validation failed',
+        errors: this.extractValidationErrors(exception),
+      };
+    }
+
+    if (exception instanceof HttpException) {
+      const response = exception.getResponse();
+      const raw =
+        typeof response === 'object' && 'message' in response
+          ? response.message
+          : exception.message;
+
+      return {
+        statusCode: exception.getStatus(),
+        message: typeof raw === 'string' ? raw : JSON.stringify(raw),
+      };
+    }
+
+    if (typeof exception === 'object' && exception !== null) {
+      const { status, expose } = exception as Record<string, unknown>;
+
+      if (
+        expose === true &&
+        typeof status === 'number' &&
+        status >= 400 &&
+        status < 500
+      ) {
+        return {
+          statusCode: status,
+          message: STATUS_CODES[status] ?? 'Client Error',
+        };
+      }
+    }
+
+    return {
+      statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      message: 'An internal error occurred on the server',
+    };
+  }
+
+  private extractValidationErrors(
+    exception: ZodValidationException,
+  ): FieldError[] | undefined {
     const zodError = exception.getZodError();
     if (!(zodError instanceof ZodError)) return undefined;
 
