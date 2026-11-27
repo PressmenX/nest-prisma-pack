@@ -10,26 +10,32 @@ import { Request, Response } from 'express';
 import { STATUS_CODES } from 'http';
 import { ZodValidationException } from 'nestjs-zod';
 import { ZodError } from 'zod';
-
-interface FieldError {
-  field: string;
-  message: string;
-}
+import { FieldError } from './field-error';
+import { prismaErrorMapper } from './prisma-error.mapper';
+import { ConfigService } from '@nestjs/config';
 
 @Catch()
 export class HttpErrorFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpErrorFilter.name);
+  private readonly isDev: boolean;
+
+  constructor(configService: ConfigService) {
+    this.isDev = configService.get<string>('NODE_ENV') === 'development';
+  }
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const req = ctx.getRequest<Request>();
     const res = ctx.getResponse<Response>();
 
+    const mapped = prismaErrorMapper(exception);
+
     const status = 'error';
     const statusCode =
-      exception instanceof HttpException
+      mapped?.statusCode ??
+      (exception instanceof HttpException
         ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+        : HttpStatus.INTERNAL_SERVER_ERROR);
     const type = STATUS_CODES[statusCode] || 'Internal Server Error';
     const exceptionName =
       exception instanceof Error ? exception.constructor.name : 'UnknownError';
@@ -46,20 +52,24 @@ export class HttpErrorFilter implements ExceptionFilter {
         : String(errors);
     const track = exception instanceof Error ? exception.stack : '';
     const messageStr =
-      typeof message === 'string' ? message : JSON.stringify(message);
+      mapped?.message ??
+      (typeof message === 'string' ? message : JSON.stringify(message));
+    const fieldErrors =
+      this.extractValidationErrors(exception) ?? mapped?.errors;
 
-    const validationErrors = this.extractValidationErrors(exception);
+    const logMessage = `[${endpoint}] - ${statusCode} : ${messageStr}`;
+    if (statusCode >= 500) this.logger.error(logMessage, track);
+    else this.logger.warn(logMessage);
 
-    this.logger.error(`[${endpoint}] - ${statusCode} : ${messageStr}`, track);
     res.status(statusCode).json({
       status,
       statusCode,
       type,
-      exceptionName,
+      exceptionName: this.isDev ? exceptionName : undefined,
       timestamp,
       endpoint,
       message: messageStr,
-      errors: validationErrors,
+      errors: fieldErrors,
     });
   }
 

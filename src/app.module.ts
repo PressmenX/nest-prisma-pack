@@ -7,8 +7,9 @@ import { pinoConfigAsync } from './core/config/logger.config';
 import { ConfigModule } from '@nestjs/config';
 import { envConfig } from './core/config/env.config';
 import { HealthModule } from './modules/health/health.module';
-import { APP_PIPE } from '@nestjs/core';
+import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { ZodValidationPipe } from 'nestjs-zod';
+import { HttpErrorFilter } from './core/filters/http-error/http-error.filter';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ZodValidationPipe } from 'nestjs-zod';
       provide: APP_PIPE,
       useClass: ZodValidationPipe,
     },
+    { provide: APP_FILTER, useClass: HttpErrorFilter },
   ],
 })
 export class AppModule {}

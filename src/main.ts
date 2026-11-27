@@ -2,7 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from 'nestjs-pino';
 import { ConfigService } from '@nestjs/config';
-import { HttpErrorFilter } from './core/filters/http-error/http-error.filter';
+
 import { TransformInterceptor } from './core/interceptors/transform/transform.interceptor';
 
 async function bootstrap() {
@@ -12,7 +12,6 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
 
   app.useLogger(app.get(Logger));
-  app.useGlobalFilters(new HttpErrorFilter());
   app.useGlobalInterceptors(new TransformInterceptor());
   app.enableShutdownHooks();
 
