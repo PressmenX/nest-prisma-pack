@@ -7,6 +7,20 @@ import {
 import { Request, Response } from 'express';
 import { map, Observable } from 'rxjs';
 
+type Wrapped = { message: string; data: unknown };
+
+function isWrapped(value: unknown): value is Wrapped {
+  if (!value || typeof value !== 'object') return false;
+
+  const obj = value as Record<string, unknown>;
+
+  return (
+    Object.keys(obj).length === 2 &&
+    typeof obj.message === 'string' &&
+    obj.data !== undefined
+  );
+}
+
 @Injectable()
 export class TransformInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
@@ -26,28 +40,17 @@ export class TransformInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       map((data: unknown) => {
-        let customMessage: string | undefined;
-        let resultData: unknown = data;
-
-        if (data && typeof data === 'object') {
-          const dataObj = data as Record<string, unknown>;
-
-          if (typeof dataObj.message === 'string') {
-            customMessage = dataObj.message;
-          }
-
-          if (dataObj.data !== undefined) {
-            resultData = dataObj.data;
-          }
-        }
+        const wrapped = isWrapped(data) ? data : undefined;
 
         return {
           statusCode,
           status: 'success',
           endpoint: `${method} ${req.url}`,
           message:
-            customMessage ?? messageMapping[method] ?? 'Operation successful',
-          result: resultData,
+            wrapped?.message ??
+            messageMapping[method] ??
+            'Operation successful',
+          result: wrapped ? wrapped.data : data,
         };
       }),
     );
