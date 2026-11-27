@@ -4,4 +4,3 @@ GET {{url}}
 ###
 
 GET {{url}}/health/check
-t
